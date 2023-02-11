@@ -43,7 +43,7 @@ class Parser:
         self.match(self.EOF)
         return json
 
-    def parse_obj(self):
+    def parse_obj(self)-> dict:
         obj = {}
         self.match("{")
         if self.next_unread_char == "}":
@@ -182,5 +182,5 @@ class Parser:
         print(f"{'~'*self.pos}^")
         exit(1)
 
-p = Parser('{"a": 4, "b": 5, "c": null, "d": [true, false]}')
+p = Parser('{"a": 4, "b": 5, "c": null, "d": {true, false}}')
 print(p.parse())
