@@ -7,7 +7,7 @@ class Parser:
         self.ws = list(" \t\n\r")
         self.zero_nine = list("0123456789")
         self.one_nine = list("123456789")
-        self.number_start = ["-"] + self.one_nine
+        self.number_start = ["-"] + self.zero_nine
 
         self.expr = expr
         self.pos = 0
@@ -39,21 +39,34 @@ class Parser:
         self.advance()
 
     def parse(self):
-        self.parse_element()
+        json = self.parse_element()
         self.match(self.EOF)
+        return json
 
     def parse_obj(self):
+        obj = {}
         self.match("{")
-        self.parse_member()
+        if self.next_unread_char == "}":
+            return obj
+        self.parse_members(obj)
         self.match("}")
+        return obj
+
+    def parse_members(self, obj):
+        member = self.parse_member()
+        obj[member[0]] = member[1]
+        if self.next_unread_char == ",":
+            self.advance()
+            self.parse_members(obj)
 
     def parse_member(self):
-        self.parse_string()
+        member_key = self.parse_string()
         self.match(":")
-        self.parse_element()
+        member_value = self.parse_element()
+        return member_key, member_value
 
     def parse_element(self):
-        self.parse_value()
+        return self.parse_value()
 
     def parse_value(self):
         if self.next_unread_char == '{':
@@ -63,7 +76,7 @@ class Parser:
         elif self.next_unread_char == '"':
             return self.parse_string()
         elif self.next_unread_char in self.number_start:
-            self.parse_number()
+            return self.parse_number()
         elif self.next_unread_char == 't':  # true
             if self.read(4) != "true":
                 self.error("parse 'true'")
@@ -79,27 +92,33 @@ class Parser:
         else:
             self.error("parse value")
 
-    def parse_array(self):
+    def parse_array(self)-> list:
+        arr = []
         self.match("[")
         if self.next_unread_char == "]":  # empty array
-            return
-        self.parse_elements()
+            return arr
+        self.parse_elements(arr)
         self.match("]")
+        return arr
         
-    def parse_elements(self):
-        self.parse_element()
+    def parse_elements(self, arr):
+        arr.append(self.parse_element())
         if self.next_unread_char == ",":
-            self.parse_elements()
+            self.advance()
+            self.parse_elements(arr)
     
     def parse_number(self)-> int|float:
-        """re: -?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?"""
-        m = re.match(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?",
-                     self.expr[self.pos:])
-        return float(self.read(m.span()[1]-m.span()[0]))
+        r"""re: -?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?"""
+        # NOTE: simplest implementation only as start point
+        num = ""
+        while self.next_unread_char in self.number_start+[".", "e", "E", "+"]:
+            num += self.next_unread_char
+            self.advance()
+        return int(num) if "." not in num else float(num)
 
     def parse_string(self)-> str:
-        """re: /"(?>\\(?>["\\\/bfnrt]|u[a-fA-F0-9]{4})|[^"\\\0-\x1F\x7F]+)*"/gm"""
-        # NOTE: simplest implementation only for now 
+        r"""re: /"(?>\\(?>["\\\/bfnrt]|u[a-fA-F0-9]{4})|[^"\\\0-\x1F\x7F]+)*"/gm"""
+        # NOTE: simplest implementation only as start point
         self.match('"')
         string = ""
         while self.next_unread_char != '"':
@@ -159,4 +178,9 @@ class Parser:
 
     def error(self, msg):
         print(f"Syntax error: {msg}")
+        print(self.expr)
+        print(f"{'~'*self.pos}^")
         exit(1)
+
+p = Parser('{"a": 4, "b": 5, "c": null, "d": [true, false]}')
+print(p.parse())
