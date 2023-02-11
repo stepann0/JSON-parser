@@ -3,7 +3,6 @@ import re
 
 class Parser:
     def __init__(self, expr: str):
-        self.pos = 0
         self.EOF = ""
         self.ws = list(" \t\n\r")
         self.zero_nine = list("0123456789")
@@ -11,33 +10,37 @@ class Parser:
         self.number_start = ["-"] + self.one_nine
 
         self.expr = expr
-        self.next_unread_char = self.new_read()
+        self.pos = 0
+        self.next_unread_char = self.next()
 
     def read(self, n=1):
+        """Read n chars from input and return them"""
+
         new_pos = self.pos + n
         res = self.expr[self.pos:new_pos]
         self.pos = new_pos
-        self.next_unread_char = self.expr[self.pos] if self.pos < len(self.expr) else self.EOF
-        
-        print(f"read '{res}', next unread: '{self.next_unread_char}', curr pos: {self.pos}")
+        self.next_unread_char = self.next()
         return res
 
-    def new_read(self):
-        res = self.EOF
-        if self.pos < len(self.expr):
-            res = self.expr[self.pos]
-        self.pos += 1
-        return res
+    def next(self):
+        """Return next unread char in input of EOF"""
+        return self.expr[self.pos] if self.pos < len(self.expr) else self.EOF
 
     def advance(self):
-        self.next_unread_char = self.new_read()
+        """Read one char from input and skip white spaces"""
+        self.read()
         while self.next_unread_char in self.ws:
-            self.next_unread_char = self.new_read()
+            self.read()
 
     def match(self, tok):
+        """Check next unread char and advance"""
         if self.next_unread_char != tok:
             self.error(f"wrong token ('{self.next_unread_char}')")
         self.advance()
+
+    def parse(self):
+        self.parse_element()
+        self.match(self.EOF)
 
     def parse_obj(self):
         self.match("{")
@@ -54,11 +57,11 @@ class Parser:
 
     def parse_value(self):
         if self.next_unread_char == '{':
-            self.parse_obj()
+            return self.parse_obj()
         elif self.next_unread_char == '[':
-            self.parse_array()
+            return self.parse_array()
         elif self.next_unread_char == '"':
-            self.parse_string()
+            return self.parse_string()
         elif self.next_unread_char in self.number_start:
             self.parse_number()
         elif self.next_unread_char == 't':  # true
@@ -94,13 +97,14 @@ class Parser:
                      self.expr[self.pos:])
         return float(self.read(m.span()[1]-m.span()[0]))
 
-    def parse_string(self):
+    def parse_string(self)-> str:
         """re: /"(?>\\(?>["\\\/bfnrt]|u[a-fA-F0-9]{4})|[^"\\\0-\x1F\x7F]+)*"/gm"""
         # NOTE: simplest implementation only for now 
         self.match('"')
         string = ""
         while self.next_unread_char != '"':
-            string += self.new_read()
+            string += self.next_unread_char
+            self.advance()
         self.match('"')
         return string
 
@@ -156,12 +160,3 @@ class Parser:
     def error(self, msg):
         print(f"Syntax error: {msg}")
         exit(1)
-
-
-    
-
-p = Parser("\"atr\"")
-def read(n=1):
-    print(f"read '{p.read(n)}', next unread: '{p.next_unread_char}' at {p.pos}, curr pos: {p.pos}")
-
-p.parse_string()
