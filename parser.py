@@ -1,6 +1,3 @@
-import re
-
-
 class Parser:
     def __init__(self, expr: str):
         self.EOF = ""
@@ -47,6 +44,7 @@ class Parser:
         obj = {}
         self.match("{")
         if self.next_unread_char == "}":
+            self.advance()
             return obj
         self.parse_members(obj)
         self.match("}")
@@ -96,6 +94,7 @@ class Parser:
         arr = []
         self.match("[")
         if self.next_unread_char == "]":  # empty array
+            self.advance()
             return arr
         self.parse_elements(arr)
         self.match("]")
@@ -106,16 +105,7 @@ class Parser:
         if self.next_unread_char == ",":
             self.advance()
             self.parse_elements(arr)
-    
-    def parse_number(self)-> int|float:
-        r"""re: -?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?"""
-        # NOTE: simplest implementation only as start point
-        num = ""
-        while self.next_unread_char in self.number_start+[".", "e", "E", "+"]:
-            num += self.next_unread_char
-            self.advance()
-        return int(num) if "." not in num else float(num)
-
+ 
     def parse_string(self)-> str:
         r"""re: /"(?>\\(?>["\\\/bfnrt]|u[a-fA-F0-9]{4})|[^"\\\0-\x1F\x7F]+)*"/gm"""
         # NOTE: simplest implementation only as start point
@@ -127,60 +117,52 @@ class Parser:
         self.match('"')
         return string
 
-    def parse_num(self)-> int:
-        """num:  '0'
-                |'1..9' follow_dig"""
-        if self.next_unread_char in self.one_nine:
-            n = int(self.next_unread_char)
-            self.advance()
-            return self.parse_follow_dig(n)
-        elif self.next_unread_char == '0':
+    def parse_number(self):
+        return (self.parse_int() + self.parse_fraction()) * 10 ** self.parse_exponent()
+
+    def parse_int(self):
+        """Parse integer and return it"""
+        if self.next_unread_char == "-":
+            self.read()
+            return -1*self.parse_one_or_more_digits()
+        return self.parse_one_or_more_digits()
+
+    def parse_one_or_more_digits(self)-> int:
+        if self.next_unread_char == '0':
             self.advance()
             return 0
-        else:
-            self.error("parse number")
+        if self.next_unread_char in self.one_nine:
+            return int(self.read()+self.read_digits(0))
+        self.error("parse number")
 
-    def parse_follow_dig(self, n: int)-> int:
-        """follow_dig: '0..9' follow_dig
-                       |ε"""
-        if self.next_unread_char in self.zero_nine:
-            n = n * 10 + int(self.next_unread_char)
-            self.advance()
-            return self.parse_follow_dig(n)
-        return n
+    def read_digits(self, min_count)-> str:
+        """Read at least min_count digits and return string"""
+        digits = ""
+        while self.next_unread_char in self.zero_nine:
+            digits += self.read()
+        if len(digits) < min_count:
+            self.error(f"expected {min_count} or more digits")
+        return digits
 
-    def parse_nums(self)-> list[int]:
-        """nums:  num next_num
-                 |ε"""
-        arr = []
-        if self.next_unread_char not in self.one_nine+[","]:
-            return arr
-        arr.append(self.parse_num())
-        self.parse_next_num(arr)
-        return arr
+    def parse_fraction(self)-> float:
+        if self.next_unread_char == '.':
+            return float(self.read() + self.read_digits(1))
+        return 0
 
-    def parse_next_num(self, arr):
-        """next_num:  ',' num next_num
-                     |ε"""
-        while self.next_unread_char == ",":
-            self.advance()
-            arr.append(self.parse_num())
-
-    def parse_arr(self)-> list[int]:
-        """arr: '[' nums ']'"""
-        self.match("[")
-        arr = self.parse_nums()
-        self.match("]")
-        self.match(self.EOF)
-
-        print(f"Correct! {sorted(arr)}")
-        return arr
+    def parse_exponent(self)-> int:
+        if self.next_unread_char in ["e", "E"]:
+            self.read()
+            sign = 1
+            if self.next_unread_char == "+":
+                self.read()
+            elif self.next_unread_char == "-":
+                sign = -1
+                self.read()
+            return sign*int(self.read_digits(1))
+        return 0
 
     def error(self, msg):
         print(f"Syntax error: {msg}")
         print(self.expr)
         print(f"{'~'*self.pos}^")
         exit(1)
-
-p = Parser('{"a": 4, "b": 5, "c": null, "d": {true, false}}')
-print(p.parse())
