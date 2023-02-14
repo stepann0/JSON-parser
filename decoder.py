@@ -14,7 +14,7 @@ class JSONDecodeError(ValueError):
         return self.__class__, (self.msg, self.doc, self.pos)
 
 
-class Parser:
+class JSONDecoder:
     def __init__(self, expr: str):
         self.EOF = ""
         self.ws = list(" \t\n\r")
@@ -54,7 +54,7 @@ class Parser:
         while self.next_unread_char in self.ws:
             self.read()
 
-    def parse(self):
+    def decode(self):
         json = self.parse_element()
         self.match(self.EOF)
         return json
@@ -185,9 +185,3 @@ class Parser:
 
     def error(self, msg):
         raise JSONDecodeError(msg, self.expr, self.pos)
-
-
-json = """{"a":[3,,4]}"""
-p = Parser(json)
-obj = p.parse()
-print(obj)
