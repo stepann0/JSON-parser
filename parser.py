@@ -1,3 +1,19 @@
+class JSONDecodeError(ValueError):
+    def __init__(self, msg, doc, pos):
+        lineno = doc.count('\n', 0, pos) + 1
+        colno = pos - doc.rfind('\n', 0, pos)
+        errmsg = '%s: line %d column %d (char %d)' % (msg, lineno, colno, pos)
+        ValueError.__init__(self, errmsg)
+        self.msg = msg
+        self.doc = doc
+        self.pos = pos
+        self.lineno = lineno
+        self.colno = colno
+
+    def __reduce__(self):
+        return self.__class__, (self.msg, self.doc, self.pos)
+
+
 class Parser:
     def __init__(self, expr: str):
         self.EOF = ""
@@ -26,8 +42,7 @@ class Parser:
     def advance(self):
         """Read one char from input and skip white spaces"""
         self.read()
-        while self.next_unread_char in self.ws:
-            self.read()
+        self.skip_ws()
 
     def match(self, tok):
         """Check next unread char and advance"""
@@ -35,12 +50,16 @@ class Parser:
             self.error(f"wrong token ('{self.next_unread_char}')")
         self.advance()
 
+    def skip_ws(self):
+        while self.next_unread_char in self.ws:
+            self.read()
+
     def parse(self):
         json = self.parse_element()
         self.match(self.EOF)
         return json
 
-    def parse_obj(self)-> dict:
+    def parse_obj(self) -> dict:
         obj = {}
         self.match("{")
         if self.next_unread_char == "}":
@@ -64,7 +83,10 @@ class Parser:
         return member_key, member_value
 
     def parse_element(self):
-        return self.parse_value()
+        self.skip_ws()
+        val = self.parse_value()
+        self.skip_ws()
+        return val
 
     def parse_value(self):
         if self.next_unread_char == '{':
@@ -90,7 +112,7 @@ class Parser:
         else:
             self.error("parse value")
 
-    def parse_array(self)-> list:
+    def parse_array(self) -> list:
         arr = []
         self.match("[")
         if self.next_unread_char == "]":  # empty array
@@ -99,14 +121,14 @@ class Parser:
         self.parse_elements(arr)
         self.match("]")
         return arr
-        
+
     def parse_elements(self, arr):
         arr.append(self.parse_element())
         if self.next_unread_char == ",":
             self.advance()
             self.parse_elements(arr)
- 
-    def parse_string(self)-> str:
+
+    def parse_string(self) -> str:
         r"""re: /"(?>\\(?>["\\\/bfnrt]|u[a-fA-F0-9]{4})|[^"\\\0-\x1F\x7F]+)*"/gm"""
         # NOTE: simplest implementation only as start point
         self.match('"')
@@ -127,7 +149,7 @@ class Parser:
             return -1*self.parse_one_or_more_digits()
         return self.parse_one_or_more_digits()
 
-    def parse_one_or_more_digits(self)-> int:
+    def parse_one_or_more_digits(self) -> int:
         if self.next_unread_char == '0':
             self.advance()
             return 0
@@ -135,7 +157,7 @@ class Parser:
             return int(self.read()+self.read_digits(0))
         self.error("parse number")
 
-    def read_digits(self, min_count)-> str:
+    def read_digits(self, min_count) -> str:
         """Read at least min_count digits and return string"""
         digits = ""
         while self.next_unread_char in self.zero_nine:
@@ -144,12 +166,12 @@ class Parser:
             self.error(f"expected {min_count} or more digits")
         return digits
 
-    def parse_fraction(self)-> float:
+    def parse_fraction(self) -> float:
         if self.next_unread_char == '.':
             return float(self.read() + self.read_digits(1))
         return 0
 
-    def parse_exponent(self)-> int:
+    def parse_exponent(self) -> int:
         if self.next_unread_char in ["e", "E"]:
             self.read()
             sign = 1
@@ -162,7 +184,10 @@ class Parser:
         return 0
 
     def error(self, msg):
-        print(f"Syntax error: {msg}")
-        print(self.expr)
-        print(f"{'~'*self.pos}^")
-        exit(1)
+        raise JSONDecodeError(msg, self.expr, self.pos)
+
+
+json = """{"a":[3,,4]}"""
+p = Parser(json)
+obj = p.parse()
+print(obj)
